@@ -1,14 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
-import random
 
-st.set_page_config(page_title="MAYA AI - Advanced Filter", layout="wide")
+st.set_page_config(page_title="MAYA AI - Stable Predictor", layout="wide")
 
-st.title("MAYA AI: Zero-Repeat & Absolute Max Elimination")
-st.markdown("Yeh system 2 rules par kaam karta hai:\n1. **Max Hit:** Jo number sabse zyada aaya hai, wo bahar.\n2. **Zero-Repeat:** Agar timeframe me koi number repeat nahi hua, toh WO PURI LIST bahar!")
+st.title("MAYA AI: Stable Prediction & Date Confirmation")
 
 # --- Independent Date Selection ---
 st.sidebar.header("Shift Date Controls")
@@ -37,89 +35,58 @@ df = load_data()
 base_data = df[(df['Date'].dt.date >= base_start) & (df['Date'].dt.date <= base_end)]['Base_Shift'].tolist()
 other_data = df[(df['Date'].dt.date >= other_start) & (df['Date'].dt.date <= other_end)]['Other_Shift'].tolist()
 
-# --- Core Logic: Max Elimination + Zero-Repeat Elimination ---
 def get_advanced_eliminations(data_list, days):
-    """
-    User ka Naya Logic: Agar max_freq 1 hai (koi repeat nahi), toh saare numbers bahar!
-    Agar max_freq > 1 hai, toh sirf max frequency wale numbers bahar.
-    """
-    if len(data_list) < days:
-        return [], 0, "Not Enough Data"
-        
-    recent_data = data_list[-days:]
-    counts = Counter(recent_data)
+    if len(data_list) < days: return [], 0
+    counts = Counter(data_list[-days:])
+    if not counts: return [], 0
     
-    if not counts:
-        return [], 0, "No Data"
-        
     max_freq = max(counts.values())
-    
-    # --- USER'S NEW LOGIC APPLIED HERE ---
     if max_freq == 1:
-        # Koi repeat nahi hua. Saare numbers unique hain.
-        # Poori ki poori list ko eliminate kar do!
-        eliminated_nums = list(counts.keys())
-        status = "Zero-Repeat (Entire Sheet Eliminated)"
+        return list(counts.keys()), max_freq # Zero-Repeat Logic
     else:
-        # Normal Max Elimination
-        eliminated_nums = [num for num, freq in counts.items() if freq == max_freq]
-        status = f"Max Hit ({max_freq} times)"
-        
-    return eliminated_nums, max_freq, status
+        return [num for num, freq in counts.items() if freq == max_freq], max_freq
 
-# --- Processing Data ---
-st.write("### 🛑 Intelligent Elimination Processing")
-
-col1, col2 = st.columns(2)
+# --- Filtering Process ---
 all_eliminated_set = set()
 
-with col1:
-    st.subheader("Base Shift Analysis")
-    base_results = []
-    for tf in timeframes:
-        elim_nums, max_f, status = get_advanced_eliminations(base_data, tf)
-        all_eliminated_set.update(elim_nums)
-        base_results.append({
-            "Days": tf, 
-            "Action Taken": status, 
-            "Eliminated #s": ", ".join([f"{x:02d}" for x in elim_nums])
-        })
-    st.table(pd.DataFrame(base_results))
+for tf in timeframes:
+    elim_base, _ = get_advanced_eliminations(base_data, tf)
+    elim_other, _ = get_advanced_eliminations(other_data, tf)
+    all_eliminated_set.update(elim_base)
+    all_eliminated_set.update(elim_other)
 
-with col2:
-    st.subheader("Other Shifts Analysis")
-    other_results = []
-    for tf in timeframes:
-        elim_nums, max_f, status = get_advanced_eliminations(other_data, tf)
-        all_eliminated_set.update(elim_nums)
-        other_results.append({
-            "Days": tf, 
-            "Action Taken": status, 
-            "Eliminated #s": ", ".join([f"{x:02d}" for x in elim_nums])
-        })
-    st.table(pd.DataFrame(other_results))
+safe_pool_list = sorted(list(set(range(100)) - all_eliminated_set))
 
-# --- The Safe Pool ---
-total_numbers = set(range(100)) # 00 to 99
-safe_pool = total_numbers - all_eliminated_set
-safe_pool_list = sorted(list(safe_pool))
+# --- NEW: Target Date Confirmation ---
+# Prediction hamesha Base Shift ki End Date ke agle din ke liye hogi
+target_prediction_date = base_end + timedelta(days=1)
 
 st.markdown("---")
-st.write("### ✅ The Final Safe Pool (Aapke Filtered Numbers)")
-st.info(f"Total Eliminated: **{len(all_eliminated_set)}** numbers. Total Safe Numbers: **{len(safe_pool_list)}** numbers.")
+st.write(f"### 🎯 Final Prediction Data")
+st.info(f"**Target Prediction Date:** {target_prediction_date.strftime('%d %B %Y')} (Aapki select ki gayi End Date ke theek agla din)")
 
-if safe_pool_list:
-    safe_str = " | ".join([f"{x:02d}" for x in safe_pool_list])
-    st.success(safe_str)
-else:
-    st.error("Sabhi numbers eliminate ho gaye hain! Yeh rare hai, par iska matlab dataset me bahut zyada variation hai.")
+if st.button("Generate Final Prediction"):
+    if safe_pool_list:
+        # --- NEW: Fixed Deterministic Logic (Randomness Hata Di Gayi Hai) ---
+        # Logic: Hum pichle 7 din ka average trend nikalenge aur 'Safe Pool' 
+        # mein se wo number chunenge jo is trend ke sabse kareeb ho.
+        # Isse button dabane par number change nahi hoga.
+        
+        if len(base_data) >= 7:
+            recent_trend_average = np.mean(base_data[-7:])
+        else:
+            recent_trend_average = np.mean(base_data) # Agar data 7 din se kam hai
+            
+        # Finding the closest number to the trend in the safe pool
+        predicted_number = min(safe_pool_list, key=lambda x: abs(x - recent_trend_average))
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Predicted Number for Next Shift", value=f"{predicted_number:02d}")
+        with col2:
+            st.metric(label="Current Trend Average", value=f"{int(recent_trend_average):02d}")
+            
+        st.success("Ab yeh number FIX rahega. Yeh Safe Pool mein se wo number hai jo recent market trend ke sabse zyada kareeb hai.")
+    else:
+        st.error("Safe pool empty hai. Please adjust date ranges.")
 
-# --- Prediction Engine ---
-st.markdown("---")
-st.write("### 🎯 Solid Prediction")
-
-if st.button("Generate Final Prediction") and safe_pool_list:
-    predicted_number = random.choice(safe_pool_list) 
-    st.metric(label="Most Probable Next Number", value=f"{predicted_number:02d}")
-    st.write("*(Yeh number us super-filtered pool se hai jisme na koi 'Max Limit' wala number hai, aur na hi koi 'Zero-Repeat' sheet wala bekar number)*")
-    
