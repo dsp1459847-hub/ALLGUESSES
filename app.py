@@ -89,4 +89,4 @@ if st.button("Generate Final Prediction"):
         st.success("Ab yeh number FIX rahega. Yeh Safe Pool mein se wo number hai jo recent market trend ke sabse zyada kareeb hai.")
     else:
         st.error("Safe pool empty hai. Please adjust date ranges.")
-
+        
